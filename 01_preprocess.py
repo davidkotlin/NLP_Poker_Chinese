@@ -1,0 +1,38 @@
+'''處理資歷，比對專有名詞字典，jieba切句子'''
+import pandas as pd
+import jieba
+
+# 1. 載入自訂字典
+# 讓 Jieba 認識德撲黑話，確保「翻牌前」不會被切成「翻牌 / 前」
+jieba.load_userdict("dict/custom_words.txt")
+
+# 2. 讀取 Excel 原始資料
+# 這裡使用 pandas 讀取 xlsx 檔案
+print("正在讀取資料...")
+df = pd.read_excel("data/撲克資料.xlsx")
+
+# 檢查一下有沒有成功讀到前幾筆
+print(f"成功讀取 {len(df)} 筆資料！")
+print("前三筆資料長這樣：\n", df.head(3))
+
+# 3. 建立一個斷詞用的函式 (Function)
+def cut_text(text):
+    # 將句子切開，並過濾掉全形空白或換行符號
+    # 這裡會回傳一個用「空白鍵」接起來的字串，這是為了之後給 TF-IDF 看的
+    tokens = jieba.lcut(str(text))
+    return " ".join([t for t in tokens if t.strip()])
+
+# 4. 執行斷詞 (Preprocess, v. 動詞，前處理)
+# 對 'text' 這個欄位的每一列資料，套用剛剛寫好的斷詞函式，並存成一個新欄位 'clean_text'
+print("\n開始進行 Jieba 斷詞...")
+df['clean_text'] = df['欄位 A (text)'].apply(cut_text)
+
+# 5. 檢視斷詞結果
+print("\n正在將斷詞結果匯出至 data 資料夾...")
+
+# 直接使用 pandas 的 .to_excel() 匯出完整結果
+df[['欄位 A (text)', 'clean_text']].to_excel("test/斷詞結果檢查.xlsx", index=False)
+
+print("匯出完成！請打開 test/斷詞結果檢查.xlsx 查看完整內容。")
+# 6. (可選) 將清理好的資料存下來，供下一個程式使用
+# df.to_csv("data/clean_corpus.csv", index=False, encoding='utf-8-sig')
