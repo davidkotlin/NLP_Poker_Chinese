@@ -26,8 +26,11 @@ print(f"成功讀取 {len(df)} 筆資料！")
 
 # 4. 修改後的斷詞函式：加入停用詞過濾機制
 def cut_and_filter_text(text):
+    # 先將傳入的文字強制轉為字串，並全部轉為小寫，避免大小寫出入導致字典比對錯誤
+    text = str(text).lower()
+    
     # 使用 jieba 進行切詞
-    raw_tokens = jieba.lcut(str(text))
+    raw_tokens = jieba.lcut(text)
     
     clean_tokens = []
     for token in raw_tokens:
@@ -48,7 +51,7 @@ df['clean_text'] = df['欄位 A (text)'].apply(cut_and_filter_text)
 print("\n正在將斷詞結果匯出至 data 資料夾...")
 
 # 直接使用 pandas 的 .to_excel() 匯出完整結果
-df[['欄位 A (text)', 'clean_text']].to_excel("test/斷詞結果檢查.xlsx", index=False)
-print("匯出完成！請打開 test/斷詞結果檢查.xlsx 查看完整內容。")
+# df[['欄位 A (text)', 'clean_text']].to_excel("test/斷詞結果檢查.xlsx", index=False)
+# print("匯出完成！請打開 test/斷詞結果檢查.xlsx 查看完整內容。")
 # 6. (可選) 將清理好的資料存下來，供下一個程式使用
-# df.to_csv("data/clean_corpus.csv", index=False, encoding='utf-8-sig')
+df[['欄位 A (text)', 'clean_text']].to_excel("data/clean_corpus.xlsx", index=False)
