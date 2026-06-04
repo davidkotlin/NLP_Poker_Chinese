@@ -28,7 +28,7 @@ print(f"✅ 知識庫載入完成！共 {len(df)} 篇文章。")
 # ==========================================
 # 2. 定義混合搜尋引擎核心
 # ==========================================
-def search_poker_knowledge(query, top_k=3):
+def search_poker_knowledge(query, top_k=5):
     # a. 處理使用者的輸入 (轉小寫並斷詞)
     query_clean = " ".join(jieba.lcut(query.lower()))
     

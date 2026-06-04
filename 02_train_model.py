@@ -25,29 +25,29 @@ feature_names = vectorizer.get_feature_names_out()
 # 以下是「檢驗區」：讓我們來偷看電腦的腦袋裡裝了什麼！
 # ---------------------------------------------------------
 
-# print("\n=== 📊 TF-IDF 萃取報告 ===")
-# print(f"總文章數：{len(corpus)} 篇")
-# print(f"萃取出的有效特徵詞 (維度)：{len(feature_names)} 個")
+print("\n=== 📊 TF-IDF 萃取報告 ===")
+print(f"總文章數：{len(corpus)} 篇")
+print(f"萃取出的有效特徵詞 (維度)：{len(feature_names)} 個")
 
-# print("\n🧐 隨機抽查 20 個特徵詞 (看看有沒有奇怪的雜訊)：")
-# # 隨機挑 20 個詞印出來看看
-# import random
-# random_features = random.sample(list(feature_names), min(20, len(feature_names)))
-# print(random_features)
+print("\n🧐 隨機抽查 20 個特徵詞 (看看有沒有奇怪的雜訊)：")
+# 隨機挑 20 個詞印出來看看
+import random
+random_features = random.sample(list(feature_names), min(20, len(feature_names)))
+print(random_features)
 
-# print("\n🥇 讓我們看看『第一篇文章』的 TF-IDF 關鍵字：")
-# print(f"原始文章：{df['欄位 A (text)'].iloc[0][:50]}...") # 印出前50個字
+print("\n🥇 讓我們看看『第一篇文章』的 TF-IDF 關鍵字：")
+print(f"原始文章：{df['欄位 A (text)'].iloc[0][:50]}...") # 印出前50個字
 
-# # 抓出第一篇文章的數學分數陣列
-# first_doc_vector = tfidf_matrix[0].toarray()[0]
+# 抓出第一篇文章的數學分數陣列
+first_doc_vector = tfidf_matrix[0].toarray()[0]
 
-# # 把「詞」跟「分數」綁在一起，並依照分數從高排到低
-# word_scores = [(feature_names[i], first_doc_vector[i]) for i in range(len(feature_names)) if first_doc_vector[i] > 0]
-# word_scores.sort(key=lambda x: x[1], reverse=True)
+# 把「詞」跟「分數」綁在一起，並依照分數從高排到低
+word_scores = [(feature_names[i], first_doc_vector[i]) for i in range(len(feature_names)) if first_doc_vector[i] > 0]
+word_scores.sort(key=lambda x: x[1], reverse=True)
 
-# print("電腦認為這篇文章最重要的 5 個詞是：")
-# for word, score in word_scores[:5]:
-#     print(f" - {word}: 權重分數 {score:.4f}")
+print("電腦認為這篇文章最重要的 5 個詞是：")
+for word, score in word_scores[:5]:
+    print(f" - {word}: 權重分數 {score:.4f}")
 # ==========================================
 # 4. 啟動 K-Means 分群演算法
 # ==========================================
