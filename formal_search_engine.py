@@ -14,25 +14,26 @@ warnings.filterwarnings("ignore", category=UserWarning)
 # 依賴注入：引入工具箱
 from core.text_processor import TextPreprocessor
 from core.vectorizer import VectorizationStrategy
-from core.clustering import ClusteringStrategy
-
+# from core.clustering import ClusteringStrategy
+from core.embedding import EmbeddingStrategy, reciprocal_rank_fusion
 class PokerSearchEngine:
     '''搜尋引擎大腦：負責指揮各個工具，執行兩階段檢索'''
     
-    def __init__(self, preprocessor, vectorizer, clusterer, model_dir="models"):
+    def __init__(self, preprocessor, vectorizer, embedder, model_dir="models"):
         print("啟動德州撲克搜尋大腦...")
         
         # 1. 接收從外部注入的武裝工具 (這些工具都已經自帶裝備/權重了)
         self.preprocessor = preprocessor
         self.vectorizer = vectorizer
-        self.clusterer = clusterer
-        
+        # self.clusterer = clusterer
+        self.embedder = embedder
         # 2. 載入知識庫文本 (因為這是單純的表格資料，交由大腦親自管理)
         print("載入知識庫文本...")
         self.df = pd.read_pickle(f"{model_dir}/poker_data_clustered.pkl")
         print("系統上線，準備完畢！")
 
     def search(self, query, top_k=3):
+        '''舊版：純 TF-IDF 搜尋 (保留做對照)
         # =========================================================
         # 階段一：使用者輸入前處理 
         # =========================================================
@@ -73,7 +74,23 @@ class PokerSearchEngine:
                     "score": round(score, 4),
                     "content": filtered_df.loc[idx, '欄位 A (text)']
                 })
-                
+        '''
+        cleaned_query = self.preprocessor.clean([query])[0]
+        q_tfidf = self.vectorizer.transform([cleaned_query])
+        tfidf_scores = cosine_similarity(q_tfidf, self.vectorizer.tfidf_matrix).flatten()
+
+        q_emb = self.embedder.transform([query])      # ⚠️ 原始 query，不要斷詞
+        emb_scores = self.embedder.similarity(q_emb)
+
+        final = reciprocal_rank_fusion([tfidf_scores, emb_scores])   # 全庫融合，不再過濾群組
+        top_indices = final.argsort()[-top_k:][::-1]
+
+        results = []
+        for idx in top_indices:
+            results.append({
+                "score": round(float(final[idx]), 4),
+                "content": self.df.iloc[idx]['欄位 A (text)'],
+            })        
         return results
 
 # ==========================================
@@ -95,9 +112,10 @@ if __name__ == "__main__":
         )
         
         # 分群器 (喚醒模型)
-        my_clusterer = ClusteringStrategy()
-        my_clusterer.load_model(f"{model_dir}/kmeans_model.joblib")
-        
+        # my_clusterer = ClusteringStrategy()
+        # my_clusterer.load_model(f"{model_dir}/kmeans_model.joblib")
+        my_embedder = EmbeddingStrategy()
+        my_embedder.load_model(f"{model_dir}/doc_embeddings.joblib")
         # 向量化器 (喚醒字典與矩陣)
         my_vectorizer = VectorizationStrategy()
         my_vectorizer.load_model(
@@ -109,7 +127,7 @@ if __name__ == "__main__":
         # 2. 核心大腦啟動
         # ---------------------------------------------------------
         # 把裝備好的神兵利器，全部交給大腦
-        engine = PokerSearchEngine(my_preprocessor, my_vectorizer, my_clusterer, model_dir)
+        engine = PokerSearchEngine(my_preprocessor, my_vectorizer, my_embedder, model_dir)
         
         # ---------------------------------------------------------
         # 3. 測試玩家查詢
@@ -131,22 +149,21 @@ if __name__ == "__main__":
                 print("抱歉，知識庫中找不到高度相關的文章。")
             else:
                 # UX 優化：先把大腦這次「五選二」鎖定的群組印出來，讓玩家知道系統在幹嘛
-                searched_clusters = results[0]['clusters_searched']
-                print(f"\n💡 系統已鎖定第 {searched_clusters} 群組進行深度檢索，為您找到以下結果：")
+                # searched_clusters = results[0]['clusters_searched']
+                # print(f"\n💡 系統已鎖定第 {searched_clusters} 群組進行深度檢索，為您找到以下結果：")
                 print("-" * 60)
                 
                 # 走訪結果清單
                 for i, res in enumerate(results):
                     score = res['score']
-                    article_cluster = res['article_cluster']
+                    # article_cluster = res['article_cluster']
                     
-                    # 避免內容太長洗版，限制只印出前 150 個字，並把換行符號拿掉讓畫面更乾淨
-                    # content_preview = str(res['content']).replace('\n', ' ')[:150]
                     # 取出完整內容，不使用 [:150] 切片
                     full_content = str(res['content'])
 
                     # 使用全新的、乾淨的排版
-                    print(f"[{i+1}] 🎯 相似度: {score} | 📁 所屬群組: {article_cluster}")
+                    # print(f"[{i+1}] 🎯 相似度: {score} | 📁 所屬群組: {article_cluster}")
+                    print(f'[{i+1}] 🎯 相似度: {score}')
                     # print(f"📝 內容: {content_preview}...\n")
                     print(f"📝 內容:\n{full_content}")
                     print("-" * 60)

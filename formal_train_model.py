@@ -2,11 +2,12 @@ import pandas as pd
 import os
 #引用文字處理模組
 from core.text_processor import TextPreprocessor
-#引用kmeans分群模組
-from core.clustering import ClusteringStrategy
-#引用向量化模組
+#引用kmeans分群模組未來用
+# from core.clustering import ClusteringStrategy
+#引用精準術語向量化模組
 from core.vectorizer import VectorizationStrategy
-
+#引用語意向量化模組
+from core.embedding import EmbeddingStrategy
 # ==========================================
 # 模組 1：專職處理文字清理 (包含字典與停用詞)
 # ==========================================
@@ -82,10 +83,11 @@ from core.vectorizer import VectorizationStrategy
 # ==========================================
 class PokerModelTrainer:
     '''主要訓練區'''
-    def __init__(self, preprocessor, vectorizer, clusterer):
+    def __init__(self, preprocessor, vectorizer, embedder):
         self.preprocessor = preprocessor
         self.vectorizer = vectorizer
-        self.clusterer = clusterer
+        self.embedder = embedder
+
         self.df = None
 
     def train(self, excel_path="data/撲克資料.xlsx", text_column="欄位 A (text)"):
@@ -96,12 +98,13 @@ class PokerModelTrainer:
         # 1. 清理
         cleaned_corpus = self.preprocessor.clean(corpus)
         
-        # 2. 向量化 (注意：不需要用變數接矩陣了，因為它存在 vectorizer 自己肚子裡)
+        # 2. 專有名詞向量化 (注意：不需要用變數接矩陣了，因為它存在 vectorizer 自己肚子裡)
         tfidf_matrix = self.vectorizer.fit_transform(cleaned_corpus)
         
-        # 3. 分群
-        self.df['Cluster_ID'] = self.clusterer.fit_predict(tfidf_matrix)
-        
+        # 3. 分群(未來)
+        # self.df['Cluster_ID'] = self.clusterer.fit_predict(tfidf_matrix)
+        #3.語意向量化 (注意： embedding 模型要餵原始自然句（它有自己的 tokenizer，你先斷詞反而會破壞語意）)
+        self.embedder.fit_transform(corpus) 
         print("訓練管線執行完畢！")
 
     def save_models(self, save_dir="models"):
@@ -114,8 +117,8 @@ class PokerModelTrainer:
             vec_path=f"{save_dir}/tfidf_vectorizer.joblib", 
             mat_path=f"{save_dir}/tfidf_matrix.joblib"
         )
-        self.clusterer.save_model(f"{save_dir}/kmeans_model.joblib")
-        
+        # self.clusterer.save_model(f"{save_dir}/kmeans_model.joblib")
+        self.embedder.save_model(f"{save_dir}/doc_embeddings.joblib")
         # DataFrame 是一般的資料表格，主控台負責直接存起來
         self.df.to_pickle(f"{save_dir}/poker_data_clustered.pkl")
         print(f"資料與模型已安全儲存至 {save_dir}/")
@@ -127,10 +130,10 @@ if __name__ == "__main__":
     # 就像組裝積木一樣，把需要的工具實例化
     my_preprocessor = TextPreprocessor(dict_path="dict/custom_words.txt", stop_path="dict/stopwords.txt")
     my_vectorizer = VectorizationStrategy()
-    my_clusterer = ClusteringStrategy(num_clusters=5)
-    
+    # my_clusterer = ClusteringStrategy(num_clusters=5)
+    my_embedder = EmbeddingStrategy()
     # 把工具交給訓練員
-    trainer = PokerModelTrainer(my_preprocessor, my_vectorizer, my_clusterer)
+    trainer = PokerModelTrainer(my_preprocessor, my_vectorizer, my_embedder)
     
     # 開始訓練並存檔
     trainer.train(excel_path="data/撲克資料.xlsx", text_column="欄位 A (text)")
