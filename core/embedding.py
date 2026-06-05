@@ -20,7 +20,7 @@ from sentence_transformers import SentenceTransformer
 class EmbeddingStrategy:
     '''負責語意向量化，補 TF-IDF「看不懂意圖」的洞。介面刻意對齊 VectorizationStrategy。'''
 
-    def __init__(self, model_name="BAAI/bge-small-zh-v1.5"):
+    def __init__(self, model_name="BAAI/bge-base-zh-v1.5"):
         # 中文可選：BAAI/bge-small-zh-v1.5(輕)、BAAI/bge-base-zh-v1.5(較準)、
         #           shibing624/text2vec-base-chinese
         print(f"載入語意模型 {model_name} ...")
