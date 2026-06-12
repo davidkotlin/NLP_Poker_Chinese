@@ -1,88 +1,90 @@
-'''評測腳本 v2：對「文章句子」算 recall@3 (不靠 label)
+'''評測腳本：逐題印出前三名，由你「人眼判讀」算 recall@3
 
-每題在題庫填一段正解文章裡的獨特句子(expected_snippet，可用 | 放多個)，
-評測就看前三名結果的「內文」有沒有出現它(用 rapidfuzz 模糊比對，容許小改動)。
-這樣 label 寫得粗、或不確定對不對，都不影響評測。
+為什麼不用自動 snippet 比對：
+  獨立出的題目（出題者沒看過文章原文）寫的正解句子，
+  幾乎不會逐字出現在文章內文裡，模糊比對會把明明對的判成 ❌，跑出假的低分。
+  對這種題庫，最可靠的判讀就是人眼看前三名。
 
-前置：models/ 已有訓練好的檔；撲克評測題庫_v2.xlsx 放專案根目錄。
-執行：python eval_recall_v2.py
+前置：models/ 已有訓練好的檔；題庫 xlsx 放專案根目錄，至少要有 query 欄。
+      （若還有 reference_answer / note / category 欄，會順手印出來幫你判斷。）
+執行：python eval_recall.py
 '''
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
-from rapidfuzz import fuzz
 
 from core.text_processor import TextPreprocessor
 from core.vectorizer import VectorizationStrategy
 from core.embedding import EmbeddingStrategy, reciprocal_rank_fusion
-from core.reranker import RerankStrategy
 
 MODEL_DIR = "models"
 TEXT_COL = "欄位 A (text)"
 LABEL_COL = "欄位 C (my_label) 給你自己對答案用的"
-EVAL_FILE = "data/撲克評測題庫.xlsx"
+EVAL_FILE = "data/撲克隱藏題庫.xlsx"
 TOP_K = 3
-FUZZ_THRESHOLD = 85   # 模糊比對門檻，0~100，越高越嚴格
 
+# --- 載入跟搜尋引擎一樣的工具 ---
 pre = TextPreprocessor("dict/custom_words.txt", "dict/stopwords.txt")
 vec = VectorizationStrategy()
 vec.load_model(f"{MODEL_DIR}/tfidf_vectorizer.joblib", f"{MODEL_DIR}/tfidf_matrix.joblib")
 emb = EmbeddingStrategy()
 emb.load_model(f"{MODEL_DIR}/doc_embeddings.joblib")
 df = pd.read_pickle(f"{MODEL_DIR}/poker_data_clustered.pkl")
-reranker = RerankStrategy()
 
-# def search_top(query, k=TOP_K):
-#     '''回傳前 k 名的 (內文, label, 語意信心)'''
-#     cleaned = pre.clean([query])[0]
-#     tfidf_scores = cosine_similarity(vec.transform([cleaned]), vec.tfidf_matrix).flatten()
-#     emb_scores = emb.similarity(emb.transform([query]))
-#     final = reciprocal_rank_fusion([tfidf_scores, emb_scores])
-#     idx = final.argsort()[-k:][::-1]
-#     return [(str(df.iloc[i][TEXT_COL]), df.iloc[i][LABEL_COL], round(float(emb_scores[i]), 3))
-#             for i in idx]
-def search_top(query, k=TOP_K, candidate_k=20):
-    '''回傳前 k 名的 (內文, label, 語意信心)'''
+
+def search_top(query, k=TOP_K):
+    '''回傳前 k 名的 (內文, label, 語意信心)
+    註：這是 hybrid(TF-IDF + embedding 用 RRF 融合) 版本。
+    如果你本機已經把 search_top 換成接了 reranker 的版本，保留你的那段就好，
+    這個檔我只動了「判讀」的部分。'''
     cleaned = pre.clean([query])[0]
     tfidf_scores = cosine_similarity(vec.transform([cleaned]), vec.tfidf_matrix).flatten()
     emb_scores = emb.similarity(emb.transform([query]))
-    fused = reciprocal_rank_fusion([tfidf_scores, emb_scores])
-    cand_idx = fused.argsort()[-candidate_k:][::-1]
-    candidates = [(int(i), str(df.iloc[i][TEXT_COL])) for i in cand_idx]
-    reranked = reranker.rerank(query, candidates, k)
-    return [(text, df.iloc[idx][LABEL_COL], round(s, 3)) for idx, text, s in reranked]
-
-def hit_check(expected_field, contents):
-    '''任一 snippet 在任一篇前三名內文裡(模糊)出現，就算命中'''
-    snippets = [s.strip() for s in str(expected_field).split("|") if s.strip()]
-    for snip in snippets:
-        for c in contents:
-            if fuzz.partial_ratio(snip, c) >= FUZZ_THRESHOLD:
-                return True, snip
-    return False, None
+    final = reciprocal_rank_fusion([tfidf_scores, emb_scores])
+    idx = final.argsort()[-k:][::-1]
+    return [(str(df.iloc[i][TEXT_COL]), df.iloc[i][LABEL_COL], round(float(emb_scores[i]), 3))
+            for i in idx]
 
 
 def run():
     evalset = pd.read_excel(EVAL_FILE)
-    hit = 0
-    misses = []
-    for _, r in evalset.iterrows():
-        got = search_top(r["query"])
-        contents = [g[0] for g in got]
-        ok, matched = hit_check(r["expected_snippet"], contents)
-        hit += ok
-        print(("✅" if ok else "❌"), r["query"], f"(命中片語：{matched})" if ok else "")
-        for content, lab, conf in got:
-            print(f"      - [{lab}] (信心 {conf})  {content[:]}")
-        if not ok:
-            misses.append(r["query"])
-
     n = len(evalset)
-    print("\n" + "=" * 52)
-    print(f"recall@{TOP_K} = {hit}/{n} = {hit / n * 100:.1f}%   (對文章層級)")
+    marks = []   # 1 = 命中, 0 = 沒中, None = 略過
+    print(f"共 {n} 題。看完每題前三名後，輸入 y(命中) / n(沒中) / s(略過)\n")
+
+    for i, r in evalset.iterrows():
+        print("=" * 60)
+        print(f"[{i + 1}/{n}] 問題：{r['query']}")
+        for col in ("reference_answer", "note", "category"):   # 有就印出來幫你判
+            if col in evalset.columns and pd.notna(r.get(col)):
+                print(f"   參考（{col}）：{str(r[col])[:]}")
+        for rank, (content, lab, conf) in enumerate(search_top(r["query"]), 1):
+            print(f"   {rank}. [{lab}] (信心 {conf})  {content[:]}…")
+
+        ans = input("   前三名有命中嗎？ y / n / s ＞ ").strip().lower()
+        marks.append(1 if ans == "y" else (None if ans == "s" else 0))
+        print()
+
+    judged = [m for m in marks if m is not None]
+    skipped = marks.count(None)
+    hit = sum(judged)
+
+    print("=" * 60)
+    if judged:
+        print(f"recall@{TOP_K} = {hit}/{len(judged)} = {hit / len(judged) * 100:.1f}%"
+              f"   （人工判讀{('，略過 ' + str(skipped) + ' 題') if skipped else ''}）")
+    else:
+        print("沒有判讀任何一題。")
+
+    misses = [evalset.iloc[i]["query"] for i, m in enumerate(marks) if m == 0]
     if misses:
-        print("\n沒中的題目：")
+        print("\n沒中的題目（優先檢查：是資料根本沒有，還是被擠掉）：")
         for q in misses:
             print("  -", q)
+
+    out = evalset.copy()
+    out["judge"] = ["命中" if m == 1 else ("略過" if m is None else "沒中") for m in marks]
+    out.to_excel("eval_judged.xlsx", index=False)
+    print("\n判讀結果已存到 eval_judged.xlsx（下次想回顧不用重判）")
 
 
 if __name__ == "__main__":
